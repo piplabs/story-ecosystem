@@ -64,7 +64,7 @@ interface IIPDerivativeAgent {
     );
 
     /// @notice Emitted on emergency withdraw
-    event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
+    event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount);
 
 
     /// -----------------------------------------------------------------------
@@ -95,7 +95,7 @@ interface IIPDerivativeAgent {
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID 
-    function addWildcardToWhitelist(
+    function addGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
@@ -107,7 +107,7 @@ interface IIPDerivativeAgent {
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID 
-    function removeWildcardFromWhitelist(
+    function removeGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
         address licenseTemplate,

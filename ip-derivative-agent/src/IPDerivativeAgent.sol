@@ -116,14 +116,14 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         }
     }
 
-    /// @notice Convenience function to add a wildcard whitelist entry (allows any caller)
-    /// @notice While a wildcard whitelist is set, trying to whitelist a specific caller won't work:
+    /// @notice Convenience function to add a global whitelist entry (allows any caller)
+    /// @notice While a global whitelist entry is set, trying to whitelist a specific caller won't work:
     /// any caller will still be allowed 
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID 
-    function addWildcardToWhitelist(
+    function addGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
@@ -138,12 +138,12 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         });
     }
 
-    /// @notice Convenience function to remove a wildcard whitelist entry
+    /// @notice Convenience function to remove a global whitelist entry
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID 
-    function removeWildcardFromWhitelist(
+    function removeGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
@@ -274,8 +274,8 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         // Prepare arrays for LicensingModule call (single parent)
         address[] memory parents = new address[](1);
         parents[0] = parentIpId;
-        uint256[] memory licenseTermsIdsArray = new uint256[](1);
-        licenseTermsIdsArray[0] = licenseTermsId;
+        uint256[] memory licenseTermsIds = new uint256[](1);
+        licenseTermsIds[0] = licenseTermsId;
         uint32 maxRts = 0;
         uint32 maxRevenueShare = 0;
 
@@ -295,7 +295,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         LICENSING_MODULE.registerDerivative(
             childIpId,
             parents,
-            licenseTermsIdsArray,
+            licenseTermsIds,
             licenseTemplate,
             royaltyContext,
             maxMintingFee,
@@ -340,7 +340,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         
         IERC20(token).safeTransfer(to, amount);
         
-        emit EmergencyWithdraw(token, to, amount, block.timestamp);
+        emit EmergencyWithdraw(token, to, amount);
     }
 
     /// @dev internal helper to add a whitelist entry

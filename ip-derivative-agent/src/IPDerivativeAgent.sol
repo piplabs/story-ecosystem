@@ -121,9 +121,7 @@ contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
         address indexed parentIpId,
         uint256 licenseTermsId,
         address licenseTemplate,
-        address currencyToken,
-        uint256 tokenAmount,
-        uint256 timestamp
+        uint256 tokenAmount
     );
 
     /// @notice Emitted on emergency withdraw
@@ -441,9 +439,7 @@ contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
             parentIpId,
             licenseTermsId,
             licenseTemplate,
-            currencyToken,
-            tokenAmount,
-            block.timestamp
+            tokenAmount
         );
     }
 

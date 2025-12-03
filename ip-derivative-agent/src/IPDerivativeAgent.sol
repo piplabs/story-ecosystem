@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
 /// @title IPDerivativeAgent
@@ -79,9 +79,12 @@ error IPDerivativeAgent_NotWhitelisted(address parentIpId, address childIpId, ad
 error IPDerivativeAgent_InvalidParams();
 error IPDerivativeAgent_FeeTooHigh(uint256 required, uint256 maxAllowed);
 error IPDerivativeAgent_EmergencyWithdrawFailed();
+error IPDerivativeAgent_TooManyEntries(uint256 entriesCount, uint256 maxEntries);
 
 contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    uint256 public constant MAX_ENTRIES = 1000;
 
     /// @notice Licensing module to call for derivative registration
     ILicensingModule public immutable LICENSING_MODULE;
@@ -215,8 +218,8 @@ contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
     ///      Each successful addition emits a WhitelistedAdded event.
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function addToWhitelistBatch(WhitelistEntry[] calldata entries) external onlyOwner {
-        uint256 n = entries.length;
-        for (uint256 i = 0; i < n; ) {
+        if (entries.length > MAX_ENTRIES) revert IPDerivativeAgent_TooManyEntries(entries.length, MAX_ENTRIES);
+        for (uint256 i = 0; i < entries.length; ) {
             WhitelistEntry calldata entry = entries[i];
             addToWhitelist(
                 entry.parentIpId,
@@ -234,8 +237,8 @@ contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
     ///      Each successful removal emits a WhitelistedRemoved event.
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function removeFromWhitelistBatch(WhitelistEntry[] calldata entries) external onlyOwner {
-        uint256 n = entries.length;
-        for (uint256 i = 0; i < n; ) {
+        if (entries.length > MAX_ENTRIES) revert IPDerivativeAgent_TooManyEntries(entries.length, MAX_ENTRIES);
+        for (uint256 i = 0; i < entries.length; ) {
             WhitelistEntry calldata entry = entries[i];
             removeFromWhitelist(
                 entry.parentIpId,
@@ -249,6 +252,8 @@ contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @notice Convenience function to add a wildcard whitelist entry (allows any caller)
+    /// @notice While a wildcard whitelist is set, trying to whitelist a specific caller won't work:
+    /// any caller will still be allowed 
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address

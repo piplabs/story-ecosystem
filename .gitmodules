@@ -1,0 +1,3 @@
+[submodule "ip-derivative-agent/lib/forge-std"]
+	path = ip-derivative-agent/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std

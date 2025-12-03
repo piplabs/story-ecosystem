@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import { ILicensingModule } from "@storyprotocol/core/interfaces/modules/licensing/ILicensingModule.sol";
+
+import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
+
+
 /// @title IPDerivativeAgent
 /// @notice Agent (owner) manages a whitelist of (parentIp, childIp, licenseTemplate, licenseTermsId, licensee).
 /// Whitelisted licensees may delegate the agent to register derivatives on behalf of the
@@ -11,77 +22,7 @@ pragma solidity 0.8.26;
 ///
 /// @dev CRITICAL: Licensees must approve this contract to spend the minting fee token before calling registerDerivativeViaAgent.
 /// @dev Wildcard Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that specific (parent, child, template, license) combo.
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-/// @dev Minimal LicensingModule interface used by this agent
-interface ILicensingModule {
-    /// @notice Register a derivative IP with parent licenses
-    /// @param childIpId The derivative IP ID
-    /// @param parentIpIds Array of parent IP IDs
-    /// @param licenseTermsIds Array of license terms IDs corresponding to each parent
-    /// @param licenseTemplate The license template address
-    /// @param royaltyContext Additional context for royalty configuration (typically empty bytes)
-    /// @param maxMintingFee Maximum minting fee willing to pay (0 = no limit)
-    /// @param maxRts Maximum RTS value allowed
-    /// @param maxRevenueShare Maximum revenue share percentage allowed
-    function registerDerivative(
-        address childIpId,
-        address[] calldata parentIpIds,
-        uint256[] calldata licenseTermsIds,
-        address licenseTemplate,
-        bytes calldata royaltyContext,
-        uint256 maxMintingFee,
-        uint32 maxRts,
-        uint32 maxRevenueShare
-    ) external;
-
-    /// @notice Predict the minting license fee for a given configuration
-    /// @param licensorIpId The parent IP ID (licensor)
-    /// @param licenseTemplate The license template address
-    /// @param licenseTermsId The license terms ID (must be non-zero)
-    /// @param amount Number of license tokens to mint (typically 1 for derivative registration)
-    /// @param receiver The receiver of the license tokens (typically the derivative owner)
-    /// @param royaltyContext Additional royalty context (typically empty bytes)
-    /// @return currencyToken The ERC20 token address for payment (address(0) if no payment required)
-    /// @return tokenAmount The amount of tokens required
-    function predictMintingLicenseFee(
-        address licensorIpId,
-        address licenseTemplate,
-        uint256 licenseTermsId,
-        uint256 amount,
-        address receiver,
-        bytes calldata royaltyContext
-    ) external view returns (address currencyToken, uint256 tokenAmount);
-}
-
-/// @notice Struct to group whitelist parameters for safer batch operations
-/// @param parentIpId Parent IP address (must be non-zero)
-/// @param childIpId Child/derivative IP address (must be non-zero)
-/// @param licensee Specific licensee address, or address(0) for wildcard
-/// @param licenseTemplate License template address (must be non-zero)
-/// @param licenseTermsId License terms ID (must be non-zero)
-struct WhitelistEntry {
-    address parentIpId;
-    address childIpId;
-    address licensee;
-    address licenseTemplate;
-    uint256 licenseTermsId;
-}
-
-/// @dev Custom errors for gas-efficient reverts
-error IPDerivativeAgent_ZeroAddress();
-error IPDerivativeAgent_AlreadyWhitelisted(address parentIpId, address childIpId, address licenseTemplate, uint256 licenseTermsId, address licensee);
-error IPDerivativeAgent_NotWhitelisted(address parentIpId, address childIpId, address licenseTemplate, uint256 licenseTermsId, address licensee);
-error IPDerivativeAgent_InvalidParams();
-error IPDerivativeAgent_FeeTooHigh(uint256 required, uint256 maxAllowed);
-error IPDerivativeAgent_EmergencyWithdrawFailed();
-error IPDerivativeAgent_TooManyEntries(uint256 entriesCount, uint256 maxEntries);
-
-contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
+contract IPDerivativeAgent is IIPDerivativeAgent, Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant MAX_ENTRIES = 1000;
@@ -95,37 +36,6 @@ contract IPDerivativeAgent is Ownable, Pausable, ReentrancyGuard {
     /// @notice Whitelist mapping keyed by keccak256(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee)
     /// @dev Use address(0) as licensee for wildcard (allows any caller). licenseTermsId must be non-zero.
     mapping(bytes32 => bool) private _whitelist;
-
-    /// @notice Emitted when a whitelist entry is added
-    event WhitelistedAdded(
-        address indexed parentIpId,
-        address indexed childIpId,
-        address indexed licenseTemplate,
-        uint256 licenseTermsId,
-        address licensee
-    );
-
-    /// @notice Emitted when a whitelist entry is removed
-    event WhitelistedRemoved(
-        address indexed parentIpId,
-        address indexed childIpId,
-        address indexed licenseTemplate,
-        uint256 licenseTermsId,
-        address licensee
-    );
-
-    /// @notice Emitted on successful derivative registration via agent
-    event DerivativeRegistered(
-        address indexed caller,
-        address indexed childIpId,
-        address indexed parentIpId,
-        uint256 licenseTermsId,
-        address licenseTemplate,
-        uint256 tokenAmount
-    );
-
-    /// @notice Emitted on emergency withdraw
-    event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
 
     /// @notice Constructor
     /// @param owner Address to transfer ownership to (must be non-zero)

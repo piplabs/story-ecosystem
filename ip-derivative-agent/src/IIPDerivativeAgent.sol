@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-/// @title IPDerivativeAgent
-/// @notice Agent (owner) manages a whitelist of (parentIp, childIp, licenseTemplate, licenseTermsId, licensee).
-/// Whitelisted licensees may delegate the agent to register derivatives on behalf of the
-/// derivative owner. The minting fee is paid in an ERC-20 token. The agent pulls the token
-/// from the licensee, approves the RoyaltyModule to pull it from the agent, and then calls
-/// LicensingModule.registerDerivative(...). The agent exposes no regular withdraw function;
-/// an emergency withdrawal (ERC20/native) is available only to the owner while paused.
-///
-/// @dev CRITICAL: Licensees must approve this contract to spend the minting fee token before calling registerDerivativeViaAgent.
-/// @dev Wildcard Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that specific (parent, child, template, license) combo.
+/// @title IIPDerivativeAgent
+/// @notice interface for the IPDerivativeAgent contract
 interface IIPDerivativeAgent {
     /// @notice Struct to group whitelist parameters for safer batch operations
     /// @param parentIpId Parent IP address (must be non-zero)
@@ -60,6 +52,7 @@ interface IIPDerivativeAgent {
         address indexed parentIpId,
         uint256 licenseTermsId,
         address licenseTemplate,
+        address currencyToken,
         uint256 tokenAmount
     );
 
@@ -72,7 +65,7 @@ interface IIPDerivativeAgent {
     /// -----------------------------------------------------------------------
 
     /// @notice Add a single whitelist entry. Callable by owner only.
-    /// @dev Setting licensee = address(0) creates a wildcard entry (any caller can register)
+    /// @dev Setting licensee = address(0) creates a global entry (any caller can register)
     /// @param entry the entry to whitelist
     function addToWhitelist(WhitelistEntry calldata entry) external;
 
@@ -88,8 +81,8 @@ interface IIPDerivativeAgent {
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function removeFromWhitelistBatch(WhitelistEntry[] calldata entries) external;
 
-    /// @notice Convenience function to add a wildcard whitelist entry (allows any caller)
-    /// @notice While a wildcard whitelist is set, trying to whitelist a specific caller won't work:
+    /// @notice Convenience function to add a global whitelist entry (allows any caller)
+    /// @notice While a global whitelist entry is set, trying to whitelist only a specific caller won't work:
     /// any caller will still be allowed 
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
@@ -102,7 +95,7 @@ interface IIPDerivativeAgent {
         uint256 licenseTermsId
     ) external;
 
-    /// @notice Convenience function to remove a wildcard whitelist entry
+    /// @notice Convenience function to remove a global whitelist entry
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
@@ -114,50 +107,41 @@ interface IIPDerivativeAgent {
         uint256 licenseTermsId
     ) external;
 
-    /// @notice Check if a licensee is whitelisted (exact match or wildcard)
+    /// @notice Check a licensee's whitelist status for a given set of parentIpId, childIpId, licenseTemplate, licenseTermsId
+    ///  (exact match or global entry)
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID (must be non-zero)
     /// @param licensee Licensee address to check
-    /// @return True if wildcard (address(0)) is whitelisted OR exact licensee is whitelisted
-    function isWhitelisted(
+    /// @return isWhitelisted True if global entry (address(0)) is whitelisted OR exact licensee is whitelisted
+    function isLicenseeWhitelisted(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
         uint256 licenseTermsId,
         address licensee
-    ) external view returns (bool);
+    ) external view returns (bool isWhitelisted);
 
-    /// @notice Helper function to compute the whitelist key for off-chain use
+    /// @notice View function computing a whitelist key 
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID (must be non-zero)
     /// @param licensee Licensee address
-    /// @return The computed whitelist key
+    /// @return whitelistKey The computed whitelist key
     function getWhitelistKey(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
         uint256 licenseTermsId,
         address licensee
-    ) external pure returns (bytes32);
+    ) external pure returns (bytes32 whitelistKey);
 
-    /// @notice Helper function to return raw whitelist status by key
+    /// @notice View function returning raw whitelist status by key
     /// @param key The whitelist key
-    /// @return True if the key is whitelisted
-    function getWhitelistStatusByKey(bytes32 key) external view returns (bool);
-
-    /// -----------------------------------------------------------------------
-    /// Pausable Controls
-    /// -----------------------------------------------------------------------
-
-    /// @notice Pause the contract (blocks registerDerivativeViaAgent calls). Only callable by owner.
-    function pause() external;
-
-    /// @notice Unpause the contract. Only callable by owner.
-    function unpause() external;
+    /// @return keyWhitelisted True if the key is whitelisted, else False
+    function isKeyWhitelisted(bytes32 key) external view returns (bool keyWhitelisted);
 
     /// -----------------------------------------------------------------------
     /// Derivative Registration (Delegated by Licensee)
@@ -186,6 +170,16 @@ interface IIPDerivativeAgent {
         address licenseTemplate,
         uint256 maxMintingFee
     ) external;
+
+    /// -----------------------------------------------------------------------
+    /// Pausable Controls
+    /// -----------------------------------------------------------------------
+
+    /// @notice Pause the contract (blocks registerDerivativeViaAgent calls). Only callable by owner.
+    function pause() external;
+
+    /// @notice Unpause the contract. Only callable by owner.
+    function unpause() external;
 
     /// -----------------------------------------------------------------------
     /// Emergency Recovery

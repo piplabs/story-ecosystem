@@ -6,7 +6,6 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import { ILicensingModule } from "@storyprotocol/core/interfaces/modules/licensing/ILicensingModule.sol";
 
 import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
@@ -15,10 +14,10 @@ import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
 /// @title IPDerivativeAgent
 /// @notice Agent (owner) manages a whitelist of (parentIp, childIp, licenseTemplate, licenseTermsId, licensee).
 /// Whitelisted licensees may delegate the agent to register derivatives on behalf of the
-/// derivative owner. The minting fee is paid in an ERC-20 token. The agent pulls the token
-/// from the licensee, approves the RoyaltyModule to pull it from the agent, and then calls
+/// derivative owner. The minting fee is paid in an ERC-20 token whitelisted for fee payment on Story Protocol. 
+/// The agent pulls the token from the licensee, approves the RoyaltyModule to pull it from the agent, and then calls
 /// LicensingModule.registerDerivative(...). The agent exposes no regular withdraw function;
-/// an emergency withdrawal (ERC20/native) is available only to the owner while paused.
+/// an emergency withdrawal (ERC20/native) is available only to the owner while paused. 
 ///
 /// @dev CRITICAL: Licensees must approve this contract to spend the minting fee token before calling registerDerivativeViaAgent.
 /// @dev Wildcard Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that specific (parent, child, template, license) combo.
@@ -34,10 +33,9 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     address public immutable ROYALTY_MODULE;
 
     /// @notice Whitelist mapping keyed by keccak256(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee)
-    /// @dev Use address(0) as licensee for wildcard (allows any caller). licenseTermsId must be non-zero.
+    /// @dev Use address(0) as licensee for global entry (allows any caller). licenseTermsId must be non-zero.
     mapping(bytes32 => bool) private _whitelist;
 
-    /// @notice Constructor
     /// @param owner Address to transfer ownership to (must be non-zero)
     /// @param _licensingModule LicensingModule address (must be non-zero)
     /// @param _royaltyModule RoyaltyModule address (must be non-zero)
@@ -54,7 +52,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// -----------------------------------------------------------------------
 
     /// @notice Add a single whitelist entry. Callable by owner only.
-    /// @dev Setting licensee = address(0) creates a wildcard entry (any caller can register)
+    /// @dev Setting licensee = address(0) creates a global entry (any caller can register)
     /// @param entry the entry to whitelist
     function addToWhitelist(
         WhitelistEntry calldata entry
@@ -117,7 +115,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     }
 
     /// @notice Convenience function to add a global whitelist entry (allows any caller)
-    /// @notice While a global whitelist entry is set, trying to whitelist a specific caller won't work:
+    /// @notice While a global whitelist entry is set, trying to whitelist only a specific caller won't work:
     /// any caller will still be allowed 
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
@@ -158,64 +156,50 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         });
     }
 
-    /// @notice Check if a licensee is whitelisted (exact match or wildcard)
+    /// @notice Check a licensee's whitelist status for a given set of parentIpId, childIpId, licenseTemplate, licenseTermsId
+    ///  (exact match or global entry)
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID (must be non-zero)
     /// @param licensee Licensee address to check
-    /// @return True if wildcard (address(0)) is whitelisted OR exact licensee is whitelisted
-    function isWhitelisted(
+    /// @return isWhitelisted True if global entry (address(0)) is whitelisted OR exact licensee is whitelisted
+    function isLicenseeWhitelisted(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
         uint256 licenseTermsId,
         address licensee
-    ) public view returns (bool) {
-        // Check wildcard first (more general case)
-        bytes32 keyWildcard = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, address(0));
-        if (_whitelist[keyWildcard]) return true;
-        // Check specific licensee
-        bytes32 keyExact = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
-        return _whitelist[keyExact];
+    ) public view returns (bool isWhitelisted) {
+        bytes32 globalKey = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, address(0));
+        if (_whitelist[globalKey]) return true;
+
+        bytes32 exactKey = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
+        return _whitelist[exactKey];
     }
 
-    /// @notice Helper function to compute the whitelist key for off-chain use
+    /// @notice View function computing a whitelist key 
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID (must be non-zero)
     /// @param licensee Licensee address
-    /// @return The computed whitelist key
+    /// @return whitelistKey The computed whitelist key
     function getWhitelistKey(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
         uint256 licenseTermsId,
         address licensee
-    ) external pure returns (bytes32) {
+    ) external pure returns (bytes32 whitelistKey) {
         return _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
     }
 
-    /// @notice Helper function to return raw whitelist status by key
+    /// @notice View function returning raw whitelist status by key
     /// @param key The whitelist key
-    /// @return True if the key is whitelisted
-    function getWhitelistStatusByKey(bytes32 key) external view returns (bool) {
+    /// @return keyWhitelisted True if the key is whitelisted, else False
+    function isKeyWhitelisted(bytes32 key) external view returns (bool keyWhitelisted) {
         return _whitelist[key];
-    }
-
-    /// -----------------------------------------------------------------------
-    /// Pausable Controls
-    /// -----------------------------------------------------------------------
-
-    /// @notice Pause the contract (blocks registerDerivativeViaAgent calls). Only callable by owner.
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    /// @notice Unpause the contract. Only callable by owner.
-    function unpause() external onlyOwner {
-        _unpause();
     }
 
     /// -----------------------------------------------------------------------
@@ -249,8 +233,8 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             revert IPDerivativeAgent_InvalidParams();
         }
 
-        // Check whitelist (exact match or wildcard)
-        if (!isWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender)) {
+        // Check whitelist (exact match or global entry)
+        if (!isLicenseeWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender)) {
             revert IPDerivativeAgent_NotWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender);
         }
 
@@ -318,8 +302,23 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             parentIpId,
             licenseTermsId,
             licenseTemplate,
+            currencyToken,
             tokenAmount
         );
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Pausable Controls
+    /// -----------------------------------------------------------------------
+
+    /// @notice Pause the contract (blocks registerDerivativeViaAgent calls). Only callable by owner.
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpause the contract. Only callable by owner.
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     /// -----------------------------------------------------------------------
@@ -411,14 +410,14 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID (must be non-zero)
     /// @param licensee Specific licensee address (or address(0) for wildcard)
-    /// @return Keccak256 hash of the packed parameters
+    /// @return whitelistKey Keccak256 hash of the packed parameters
     function _whitelistKey(
         address parentIpId,
         address childIpId,
         address licenseTemplate,
         uint256 licenseTermsId,
         address licensee
-    ) internal pure returns (bytes32) {
+    ) internal pure returns (bytes32 whitelistKey) {
         return keccak256(abi.encodePacked(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee));
     }
 }

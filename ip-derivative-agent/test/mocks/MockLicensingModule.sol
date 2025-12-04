@@ -5,12 +5,12 @@ contract MockLicensingModule {
     address public currencyToken;
     uint256 public tokenAmount;
     bool public registerDerivativeCalled;
-    
+
     function setMintingFee(address _currencyToken, uint256 _tokenAmount) external {
         currencyToken = _currencyToken;
         tokenAmount = _tokenAmount;
     }
-    
+
     function predictMintingLicenseFee(
         address,
         address,
@@ -21,7 +21,7 @@ contract MockLicensingModule {
     ) external view returns (address, uint256) {
         return (currencyToken, tokenAmount);
     }
-    
+
     function registerDerivative(
         address,
         address[] calldata,

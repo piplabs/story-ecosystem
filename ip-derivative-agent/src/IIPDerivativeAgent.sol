@@ -20,8 +20,20 @@ interface IIPDerivativeAgent {
 
     /// @dev Custom errors for gas-efficient reverts
     error IPDerivativeAgent_ZeroAddress();
-    error IPDerivativeAgent_AlreadyWhitelisted(address parentIpId, address childIpId, address licenseTemplate, uint256 licenseTermsId, address licensee);
-    error IPDerivativeAgent_NotWhitelisted(address parentIpId, address childIpId, address licenseTemplate, uint256 licenseTermsId, address licensee);
+    error IPDerivativeAgent_AlreadyWhitelisted(
+        address parentIpId,
+        address childIpId,
+        address licenseTemplate,
+        uint256 licenseTermsId,
+        address licensee
+    );
+    error IPDerivativeAgent_NotWhitelisted(
+        address parentIpId,
+        address childIpId,
+        address licenseTemplate,
+        uint256 licenseTermsId,
+        address licensee
+    );
     error IPDerivativeAgent_InvalidParams();
     error IPDerivativeAgent_FeeTooHigh(uint256 required, uint256 maxAllowed);
     error IPDerivativeAgent_EmergencyWithdrawFailed();
@@ -59,7 +71,6 @@ interface IIPDerivativeAgent {
     /// @notice Emitted on emergency withdraw
     event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount);
 
-
     /// -----------------------------------------------------------------------
     /// Whitelist Management
     /// -----------------------------------------------------------------------
@@ -73,21 +84,21 @@ interface IIPDerivativeAgent {
     /// @param entry the entry to remove from whitelist
     function removeFromWhitelist(WhitelistEntry calldata entry) external;
 
-    /// @notice Batch add whitelist entries. 
+    /// @notice Batch add whitelist entries.
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function addToWhitelistBatch(WhitelistEntry[] calldata entries) external;
 
-    /// @notice Batch remove whitelist entries. 
+    /// @notice Batch remove whitelist entries.
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function removeFromWhitelistBatch(WhitelistEntry[] calldata entries) external;
 
     /// @notice Convenience function to add a global whitelist entry (allows any caller)
     /// @notice While a global whitelist entry is set, trying to whitelist only a specific caller won't work:
-    /// any caller will still be allowed 
+    /// any caller will still be allowed
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
-    /// @param licenseTermsId License terms ID 
+    /// @param licenseTermsId License terms ID
     function addGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
@@ -99,7 +110,7 @@ interface IIPDerivativeAgent {
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
-    /// @param licenseTermsId License terms ID 
+    /// @param licenseTermsId License terms ID
     function removeGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
@@ -107,8 +118,8 @@ interface IIPDerivativeAgent {
         uint256 licenseTermsId
     ) external;
 
-    /// @notice Check a licensee's whitelist status for a given set of parentIpId, childIpId, licenseTemplate, licenseTermsId
-    ///  (exact match or global entry)
+    /// @notice Check a licensee's whitelist status for a given set of
+    /// parentIpId, childIpId, licenseTemplate, licenseTermsId (exact match or global entry)
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
@@ -123,7 +134,7 @@ interface IIPDerivativeAgent {
         address licensee
     ) external view returns (bool isWhitelisted);
 
-    /// @notice View function computing a whitelist key 
+    /// @notice View function computing a whitelist key
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address

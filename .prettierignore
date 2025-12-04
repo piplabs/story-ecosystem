@@ -1,0 +1,14 @@
+# Ignore lib/ inside any top-level subfolder
+*/lib/**
+
+ # explicitly unignore src/lib in any top-level subfolder
+!*/src/lib/**
+
+build
+coverage
+out
+assets
+node_modules
+.next
+.idea
+.github

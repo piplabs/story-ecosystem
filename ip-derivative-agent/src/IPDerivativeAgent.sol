@@ -10,17 +10,18 @@ import { ILicensingModule } from "@storyprotocol/core/interfaces/modules/licensi
 
 import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
 
-
 /// @title IPDerivativeAgent
 /// @notice Agent (owner) manages a whitelist of (parentIp, childIp, licenseTemplate, licenseTermsId, licensee).
 /// Whitelisted licensees may delegate the agent to register derivatives on behalf of the
-/// derivative owner. The minting fee is paid in an ERC-20 token whitelisted for fee payment on Story Protocol. 
+/// derivative owner. The minting fee is paid in an ERC-20 token whitelisted for fee payment on Story Protocol.
 /// The agent pulls the token from the licensee, approves the RoyaltyModule to pull it from the agent, and then calls
 /// LicensingModule.registerDerivative(...). The agent exposes no regular withdraw function;
-/// an emergency withdrawal (ERC20/native) is available only to the owner while paused. 
+/// an emergency withdrawal (ERC20/native) is available only to the owner while paused.
 ///
-/// @dev CRITICAL: Licensees must approve this contract to spend the minting fee token before calling registerDerivativeViaAgent.
-/// @dev Wildcard Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that specific (parent, child, template, license) combo.
+/// @dev CRITICAL: Licensees must approve this contract to spend the minting fee token before calling
+/// registerDerivativeViaAgent.
+/// @dev Wildcard Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that
+/// specific (parent, child, template, license) combo.
 contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -54,9 +55,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @notice Add a single whitelist entry. Callable by owner only.
     /// @dev Setting licensee = address(0) creates a global entry (any caller can register)
     /// @param entry the entry to whitelist
-    function addToWhitelist(
-        WhitelistEntry calldata entry
-    ) external onlyOwner {
+    function addToWhitelist(WhitelistEntry calldata entry) external onlyOwner {
         _addToWhitelist({
             parentIpId: entry.parentIpId,
             childIpId: entry.childIpId,
@@ -68,9 +67,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
 
     /// @notice Remove a single whitelist entry. Callable by owner only.
     /// @param entry the entry to remove from whitelist
-    function removeFromWhitelist(
-        WhitelistEntry calldata entry
-    ) external onlyOwner {
+    function removeFromWhitelist(WhitelistEntry calldata entry) external onlyOwner {
         _removeFromWhitelist({
             parentIpId: entry.parentIpId,
             childIpId: entry.childIpId,
@@ -80,47 +77,51 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         });
     }
 
-    /// @notice Batch add whitelist entries. 
+    /// @notice Batch add whitelist entries.
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function addToWhitelistBatch(WhitelistEntry[] calldata entries) external onlyOwner {
         if (entries.length > MAX_ENTRIES) revert IPDerivativeAgent_TooManyEntries(entries.length, MAX_ENTRIES);
         for (uint256 i = 0; i < entries.length; ) {
             WhitelistEntry calldata entry = entries[i];
             _addToWhitelist({
-            parentIpId: entry.parentIpId,
-            childIpId: entry.childIpId,
-            licensee: entry.licensee,
-            licenseTemplate: entry.licenseTemplate,
-            licenseTermsId: entry.licenseTermsId
+                parentIpId: entry.parentIpId,
+                childIpId: entry.childIpId,
+                licensee: entry.licensee,
+                licenseTemplate: entry.licenseTemplate,
+                licenseTermsId: entry.licenseTermsId
             });
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
-    /// @notice Batch remove whitelist entries. 
+    /// @notice Batch remove whitelist entries.
     /// @param entries Array of WhitelistEntry structs containing whitelist parameters
     function removeFromWhitelistBatch(WhitelistEntry[] calldata entries) external onlyOwner {
         if (entries.length > MAX_ENTRIES) revert IPDerivativeAgent_TooManyEntries(entries.length, MAX_ENTRIES);
         for (uint256 i = 0; i < entries.length; ) {
             WhitelistEntry calldata entry = entries[i];
             _removeFromWhitelist({
-            parentIpId: entry.parentIpId,
-            childIpId: entry.childIpId,
-            licensee: entry.licensee,
-            licenseTemplate: entry.licenseTemplate,
-            licenseTermsId: entry.licenseTermsId
+                parentIpId: entry.parentIpId,
+                childIpId: entry.childIpId,
+                licensee: entry.licensee,
+                licenseTemplate: entry.licenseTemplate,
+                licenseTermsId: entry.licenseTermsId
             });
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
     /// @notice Convenience function to add a global whitelist entry (allows any caller)
     /// @notice While a global whitelist entry is set, trying to whitelist only a specific caller won't work:
-    /// any caller will still be allowed 
+    /// any caller will still be allowed
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
-    /// @param licenseTermsId License terms ID 
+    /// @param licenseTermsId License terms ID
     function addGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
@@ -140,7 +141,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
-    /// @param licenseTermsId License terms ID 
+    /// @param licenseTermsId License terms ID
     function removeGlobalWhitelistEntry(
         address parentIpId,
         address childIpId,
@@ -156,8 +157,8 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         });
     }
 
-    /// @notice Check a licensee's whitelist status for a given set of parentIpId, childIpId, licenseTemplate, licenseTermsId
-    ///  (exact match or global entry)
+    /// @notice Check a licensee's whitelist status for a given set of parentIpId, childIpId,
+    /// licenseTemplate, licenseTermsId (exact match or global entry)
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
@@ -178,7 +179,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         return _whitelist[exactKey];
     }
 
-    /// @notice View function computing a whitelist key 
+    /// @notice View function computing a whitelist key
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
@@ -229,7 +230,9 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         address licenseTemplate,
         uint256 maxMintingFee
     ) external nonReentrant whenNotPaused {
-        if (childIpId == address(0) || parentIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0) {
+        if (
+            childIpId == address(0) || parentIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0
+        ) {
             revert IPDerivativeAgent_InvalidParams();
         }
 
@@ -240,7 +243,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
 
         bytes memory royaltyContext = "";
 
-        // Predict minting fee for a single license token (amount = 1), receiver = msg.sender (licensee/derivative owner)
+        // Predict minting fee for a single license token (amount = 1), receiver=msg.sender (licensee/derivative owner)
         (address currencyToken, uint256 tokenAmount) = LICENSING_MODULE.predictMintingLicenseFee(
             parentIpId,
             licenseTemplate,
@@ -336,9 +339,9 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         if (token == address(0) || to == address(0) || to == address(this)) {
             revert IPDerivativeAgent_InvalidParams();
         }
-        
+
         IERC20(token).safeTransfer(to, amount);
-        
+
         emit EmergencyWithdraw(token, to, amount);
     }
 
@@ -355,28 +358,19 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         address licenseTemplate,
         uint256 licenseTermsId
     ) internal {
-        if (parentIpId == address(0) || childIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0) {
+        if (
+            parentIpId == address(0) || childIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0
+        ) {
             revert IPDerivativeAgent_InvalidParams();
         }
 
-        bytes32 key = _whitelistKey(
-            parentIpId, 
-            childIpId, 
-            licenseTemplate, 
-            licenseTermsId, 
-            licensee);
+        bytes32 key = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
 
         if (_whitelist[key]) return;
 
         _whitelist[key] = true;
 
-        emit WhitelistedAdded(
-            parentIpId, 
-            childIpId, 
-            licenseTemplate, 
-            licenseTermsId, 
-            licensee
-        );
+        emit WhitelistedAdded(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
     }
 
     /// @dev internal helper to remove a whitelist entry
@@ -392,7 +386,9 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         address licenseTemplate,
         uint256 licenseTermsId
     ) internal {
-        if (parentIpId == address(0) || childIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0) {
+        if (
+            parentIpId == address(0) || childIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0
+        ) {
             revert IPDerivativeAgent_InvalidParams();
         }
 

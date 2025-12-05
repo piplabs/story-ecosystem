@@ -1,0 +1,16 @@
+{
+  "devDependencies": {
+    "husky": "^9.0.11",
+    "prettier": "^3.0.0",
+    "prettier-plugin-solidity": "^2.1.0",
+    "solhint": "^6.0.0"
+  },
+  "scripts": {
+    "lint": "yarn lint:sol",
+    "lint:fix": "yarn lint:sol:fix",
+    "lint:sol": "prettier --log-level warn --ignore-path .prettierignore '*/{src,test,script}/**/*.sol' --check && solhint '*/{src,test,script}/**/*.sol'",
+    "lint:sol:fix": "prettier --log-level warn --ignore-path .prettierignore '*/{src,test,script}/**/*.sol' --write",
+    "solhint": "solhint '*/{src,test,script}/**/*.sol'",
+    "prepare": "husky"
+  }
+}

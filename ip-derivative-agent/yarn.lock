@@ -2,7 +2,36 @@
 # yarn lockfile v1
 
 
+"@openzeppelin/contracts-upgradeable@5.2.0":
+  version "5.2.0"
+  resolved "https://registry.yarnpkg.com/@openzeppelin/contracts-upgradeable/-/contracts-upgradeable-5.2.0.tgz#caf9a6eaf4f16d7f90f9b45a6db4e7b125f4b13b"
+  integrity sha512-mZIu9oa4tQTlGiOJHk6D3LdJlqFqF6oNOSn6S6UVJtzfs9UsY9/dhMEbAVTwElxUtJnjpf6yA062+oBp+eOyPg==
+
+"@openzeppelin/contracts@5.2.0":
+  version "5.2.0"
+  resolved "https://registry.yarnpkg.com/@openzeppelin/contracts/-/contracts-5.2.0.tgz#bd020694218202b811b0ea3eec07277814c658da"
+  integrity sha512-bxjNie5z89W1Ea0NZLZluFh8PrFNn9DH8DQlujEok2yjsOlraUPKID5p1Wk3qdNbf6XkQ1Os2RvfiHrrXLHWKA==
+
 "@openzeppelin/contracts@^5.4.0":
   version "5.4.0"
   resolved "https://registry.yarnpkg.com/@openzeppelin/contracts/-/contracts-5.4.0.tgz#177594bdb2d86c71f5d1052fe40cb4edb95fb20f"
   integrity sha512-eCYgWnLg6WO+X52I16TZt8uEjbtdkgLC0SUX/xnAksjjrQI4Xfn4iBRoI5j55dmlOhDv1Y7BoR3cU7e3WWhC6A==
+
+"@story-protocol/protocol-core@github:storyprotocol/protocol-core-v1#v1.3.2":
+  version "1.1.0"
+  resolved "https://codeload.github.com/storyprotocol/protocol-core-v1/tar.gz/51617212363d8c428538fc32e7a1156504faec4e"
+  dependencies:
+    "@openzeppelin/contracts" "5.2.0"
+    "@openzeppelin/contracts-upgradeable" "5.2.0"
+    erc6551 "^0.3.1"
+    solady "^0.0.281"
+
+erc6551@^0.3.1:
+  version "0.3.1"
+  resolved "https://registry.yarnpkg.com/erc6551/-/erc6551-0.3.1.tgz#f9ccc0901c210b0cc29c1c730398878319a1fd30"
+  integrity sha512-4+O7CJ5gn3/s2Mum1QiJDJUbGE1P1m0t3do2nnFAKWEXLubWfZjS12HqraUJ6Y6su3WJ8EqdWm0270gC0bqpCA==
+
+solady@^0.0.281:
+  version "0.0.281"
+  resolved "https://registry.yarnpkg.com/solady/-/solady-0.0.281.tgz#2538b475ef4db587c4c946cd032412e08acba4ca"
+  integrity sha512-pO/r0cVb6EXwAISE/cgcn1outhvkEKHEnVCSUTlRdIWDnl013CrUtMx8PbkDYfef2TrJB178TOA0jIBDVyjGBg==

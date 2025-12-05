@@ -20,7 +20,7 @@ import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
 ///
 /// @dev CRITICAL: Licensees must approve this contract to spend the minting fee token before calling
 /// registerDerivativeViaAgent.
-/// @dev Wildcard Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that
+/// @dev Global entry Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that
 /// specific (parent, child, template, license) combo.
 contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -157,8 +157,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         });
     }
 
-    /// @notice Check a licensee's whitelist status for a given set of parentIpId, childIpId,
-    /// licenseTemplate, licenseTermsId (exact match or global entry)
+    /// @notice Check if a licensee is whitelisted (exact match or global entry)
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
@@ -196,7 +195,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         return _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
     }
 
-    /// @notice View function returning raw whitelist status by key
+    /// @notice View function returning whitelist status by key
     /// @param key The whitelist key
     /// @return keyWhitelisted True if the key is whitelisted, else False
     function isKeyWhitelisted(bytes32 key) external view returns (bool keyWhitelisted) {
@@ -348,7 +347,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @dev internal helper to add a whitelist entry
     /// @param parentIpId Parent IP address (must be non-zero)
     /// @param childIpId Child/derivative IP address (must be non-zero)
-    /// @param licensee Specific licensee address, or address(0) for wildcard
+    /// @param licensee Specific licensee address, or address(0) for global entry
     /// @param licenseTemplate License template address (must be non-zero)
     /// @param licenseTermsId License terms ID (must be non-zero)
     function _addToWhitelist(
@@ -365,9 +364,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         }
 
         bytes32 key = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
-
         if (_whitelist[key]) return;
-
         _whitelist[key] = true;
 
         emit WhitelistedAdded(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
@@ -376,7 +373,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @dev internal helper to remove a whitelist entry
     /// @param parentIpId Parent IP address (must be non-zero)
     /// @param childIpId Child/derivative IP address (must be non-zero)
-    /// @param licensee Specific licensee address, or address(0) for wildcard
+    /// @param licensee Specific licensee address, or address(0) for global entry
     /// @param licenseTemplate License template address (must be non-zero)
     /// @param licenseTermsId License terms ID (must be non-zero)
     function _removeFromWhitelist(
@@ -397,6 +394,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             return;
         }
         _whitelist[key] = false;
+
         emit WhitelistedRemoved(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
     }
 
@@ -405,7 +403,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
     /// @param licenseTermsId License terms ID (must be non-zero)
-    /// @param licensee Specific licensee address (or address(0) for wildcard)
+    /// @param licensee Specific licensee address (or address(0) for global entry)
     /// @return whitelistKey Keccak256 hash of the packed parameters
     function _whitelistKey(
         address parentIpId,

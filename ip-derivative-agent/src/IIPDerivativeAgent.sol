@@ -4,10 +4,10 @@ pragma solidity 0.8.26;
 /// @title IIPDerivativeAgent
 /// @notice interface for the IPDerivativeAgent contract
 interface IIPDerivativeAgent {
-    /// @notice Struct to group whitelist parameters for safer batch operations
+    /// @notice Struct to group whitelist parameters
     /// @param parentIpId Parent IP address (must be non-zero)
     /// @param childIpId Child/derivative IP address (must be non-zero)
-    /// @param licensee Specific licensee address, or address(0) for wildcard
+    /// @param licensee Specific licensee address, or address(0) for global entry
     /// @param licenseTemplate License template address (must be non-zero)
     /// @param licenseTermsId License terms ID (must be non-zero)
     struct WhitelistEntry {
@@ -18,7 +18,6 @@ interface IIPDerivativeAgent {
         uint256 licenseTermsId;
     }
 
-    /// @dev Custom errors for gas-efficient reverts
     error IPDerivativeAgent_ZeroAddress();
     error IPDerivativeAgent_AlreadyWhitelisted(
         address parentIpId,
@@ -118,8 +117,7 @@ interface IIPDerivativeAgent {
         uint256 licenseTermsId
     ) external;
 
-    /// @notice Check a licensee's whitelist status for a given set of
-    /// parentIpId, childIpId, licenseTemplate, licenseTermsId (exact match or global entry)
+    /// @notice Check if a licensee is whitelisted (exact match or global entry)
     /// @param parentIpId Parent IP address
     /// @param childIpId Child/derivative IP address
     /// @param licenseTemplate License template address
@@ -149,7 +147,7 @@ interface IIPDerivativeAgent {
         address licensee
     ) external pure returns (bytes32 whitelistKey);
 
-    /// @notice View function returning raw whitelist status by key
+    /// @notice View function returning whitelist status by key
     /// @param key The whitelist key
     /// @return keyWhitelisted True if the key is whitelisted, else False
     function isKeyWhitelisted(bytes32 key) external view returns (bool keyWhitelisted);

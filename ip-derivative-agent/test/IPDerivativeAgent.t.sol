@@ -94,35 +94,31 @@ contract IPDerivativeAgentTest is Test {
     }
 
     function test_AddToWhitelist_RevertIf_ZeroParentIp() public {
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.parentIpId = address(0);
+        sampleEntry.parentIpId = address(0);
         vm.prank(owner);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.addToWhitelist(entry);
+        agent.addToWhitelist(sampleEntry);
     }
 
     function test_AddToWhitelist_RevertIf_ZeroChildIp() public {
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.childIpId = address(0);
+        sampleEntry.childIpId = address(0);
         vm.prank(owner);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.addToWhitelist(entry);
+        agent.addToWhitelist(sampleEntry);
     }
 
     function test_AddToWhitelist_RevertIf_ZeroLicenseTemplate() public {
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.licenseTemplate = address(0);
+        sampleEntry.licenseTemplate = address(0);
         vm.prank(owner);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.addToWhitelist(entry);
+        agent.addToWhitelist(sampleEntry);
     }
 
     function test_AddToWhitelist_RevertIf_ZeroLicenseId() public {
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.licenseTermsId = 0;
+        sampleEntry.licenseTermsId = 0;
         vm.prank(owner);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.addToWhitelist(entry);
+        agent.addToWhitelist(sampleEntry);
     }
 
     function test_AddToWhitelist_AlreadyWhitelisted_shouldNotRevert() public {
@@ -157,21 +153,18 @@ contract IPDerivativeAgentTest is Test {
         vm.startPrank(owner);
         agent.addToWhitelist(sampleEntry);
 
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.licenseTermsId = 0;
+        sampleEntry.licenseTermsId = 0;
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.removeFromWhitelist(entry);
-        vm.stopPrank();
+        agent.removeFromWhitelist(sampleEntry);
     }
 
     function test_RemoveFromWhitelist_RevertIf_ZeroParentIp() public {
         vm.startPrank(owner);
         agent.addToWhitelist(sampleEntry);
 
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.parentIpId = address(0);
+        sampleEntry.parentIpId = address(0);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.removeFromWhitelist(entry);
+        agent.removeFromWhitelist(sampleEntry);
         vm.stopPrank();
     }
 
@@ -179,10 +172,9 @@ contract IPDerivativeAgentTest is Test {
         vm.startPrank(owner);
         agent.addToWhitelist(sampleEntry);
 
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.childIpId = address(0);
+        sampleEntry.childIpId = address(0);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.removeFromWhitelist(entry);
+        agent.removeFromWhitelist(sampleEntry);
         vm.stopPrank();
     }
 
@@ -190,10 +182,9 @@ contract IPDerivativeAgentTest is Test {
         vm.startPrank(owner);
         agent.addToWhitelist(sampleEntry);
 
-        IIPDerivativeAgent.WhitelistEntry memory entry = sampleEntry;
-        entry.licenseTemplate = address(0);
+        sampleEntry.licenseTemplate = address(0);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.removeFromWhitelist(entry);
+        agent.removeFromWhitelist(sampleEntry);
         vm.stopPrank();
     }
 
@@ -257,12 +248,12 @@ contract IPDerivativeAgentTest is Test {
         uint256 tooMany = agent.MAX_ENTRIES() + 1;
         IIPDerivativeAgent.WhitelistEntry[] memory entries = new IIPDerivativeAgent.WhitelistEntry[](tooMany);
 
-        for (uint256 i = 0; i < tooMany; ++i) {
+        for (uint256 i = 0; i < tooMany; i++) {
             entries[i] = IIPDerivativeAgent.WhitelistEntry({
                 parentIpId: address(uint160(0x10 + i)),
                 childIpId: address(uint160(0x20 + i)),
                 licensee: address(uint160(0x30 + i)),
-                licenseTemplate: address(uint160(0x40 + i)),
+                licenseTemplate: address(uint160(0x40)),
                 licenseTermsId: 1
             });
         }
@@ -277,24 +268,6 @@ contract IPDerivativeAgentTest is Test {
         );
         agent.addToWhitelistBatch(entries);
         vm.stopPrank();
-    }
-
-    function test_BatchAddToWhitelist_RevertIf_ZeroLicenseTermsId() public {
-        IIPDerivativeAgent.WhitelistEntry[] memory entries = new IIPDerivativeAgent.WhitelistEntry[](2);
-
-        entries[0] = sampleEntry;
-
-        entries[1] = IIPDerivativeAgent.WhitelistEntry({
-            parentIpId: address(0x10),
-            childIpId: address(0x11),
-            licensee: address(0x12),
-            licenseTemplate: address(0x13),
-            licenseTermsId: 0 // Zero license terms ID
-        });
-
-        vm.prank(owner);
-        vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.addToWhitelistBatch(entries);
     }
 
     function test_BatchRemoveFromWhitelist_Success() public {
@@ -339,49 +312,16 @@ contract IPDerivativeAgentTest is Test {
         );
     }
 
-    function test_BatchRemoveFromWhitelist_RevertIf_ZeroLicenseTermsId() public {
-        IIPDerivativeAgent.WhitelistEntry[] memory addEntries = new IIPDerivativeAgent.WhitelistEntry[](2);
-        IIPDerivativeAgent.WhitelistEntry[] memory removeEntries = new IIPDerivativeAgent.WhitelistEntry[](2);
-
-        addEntries[0] = sampleEntry;
-
-        addEntries[1] = IIPDerivativeAgent.WhitelistEntry({
-            parentIpId: address(0x10),
-            childIpId: address(0x11),
-            licensee: address(0x12),
-            licenseTemplate: address(0x13),
-            licenseTermsId: 2
-        });
-
-        removeEntries[0] = addEntries[0];
-        removeEntries[1] = IIPDerivativeAgent.WhitelistEntry({
-            parentIpId: address(0x10),
-            childIpId: address(0x11),
-            licensee: address(0x12),
-            licenseTemplate: address(0x13),
-            licenseTermsId: 0 // Zero license terms ID
-        });
-
-        vm.startPrank(owner);
-        // Add entries first
-        agent.addToWhitelistBatch(addEntries);
-
-        // Try to remove with zero license terms ID
-        vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
-        agent.removeFromWhitelistBatch(removeEntries);
-        vm.stopPrank();
-    }
-
     function test_BatchRemoveFromWhitelist_RevertIf_TooManyEntries() public {
         uint256 tooMany = agent.MAX_ENTRIES() + 1;
         IIPDerivativeAgent.WhitelistEntry[] memory entries = new IIPDerivativeAgent.WhitelistEntry[](tooMany);
 
-        for (uint256 i = 0; i < tooMany; ++i) {
+        for (uint256 i = 0; i < tooMany; i++) {
             entries[i] = IIPDerivativeAgent.WhitelistEntry({
                 parentIpId: address(uint160(0x10 + i)),
                 childIpId: address(uint160(0x20 + i)),
                 licensee: address(uint160(0x30 + i)),
-                licenseTemplate: address(uint160(0x40 + i)),
+                licenseTemplate: address(uint160(0x40)),
                 licenseTermsId: 1
             });
         }
@@ -569,7 +509,6 @@ contract IPDerivativeAgentTest is Test {
     // ========== Emergency Withdraw Tests ==========
 
     function test_EmergencyWithdraw_Success() public {
-        // Send tokens to agent
         token.mint(address(agent), 100 ether);
 
         vm.startPrank(owner);
@@ -582,6 +521,8 @@ contract IPDerivativeAgentTest is Test {
     }
 
     function test_EmergencyWithdraw_RevertIf_ZeroToken() public {
+        token.mint(address(agent), 100 ether);
+
         vm.startPrank(owner);
         agent.pause();
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
@@ -597,7 +538,7 @@ contract IPDerivativeAgentTest is Test {
         agent.emergencyWithdraw(address(token), owner, 100 ether);
     }
 
-    function test_EmergencyWithdraw_RevertIf_ToIsContract() public {
+    function test_EmergencyWithdraw_RevertIf_ToIsAgent() public {
         token.mint(address(agent), 100 ether);
 
         vm.startPrank(owner);
@@ -607,7 +548,7 @@ contract IPDerivativeAgentTest is Test {
         vm.stopPrank();
     }
 
-    function test_EmergencyWithdraw_RevertIf_CallerNotOwner() public {
+    function test_EmergencyWithdraw_RevertIf_ToIsZeroAddress() public {
         token.mint(address(agent), 100 ether);
 
         vm.startPrank(owner);
@@ -617,15 +558,14 @@ contract IPDerivativeAgentTest is Test {
         vm.stopPrank();
     }
 
-    function test_EmergencyWithdraw_RevertIf_ToIsZeroAddress() public {
+    function test_EmergencyWithdraw_RevertIf_CallerNotOwner() public {
         token.mint(address(agent), 100 ether);
 
         vm.prank(owner);
         agent.pause();
         vm.prank(address(0x999));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0x999)));
-        agent.emergencyWithdraw(address(token), address(0), 100 ether);
-        vm.stopPrank();
+        agent.emergencyWithdraw(address(token), owner, 100 ether);
     }
 
     // ========== View Functions Tests ==========

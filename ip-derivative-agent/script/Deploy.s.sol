@@ -11,7 +11,6 @@ import { IPDerivativeAgent } from "../src/IPDerivativeAgent.sol";
 /// forge script script/Deploy.s.sol:Deploy --sig "run()" --account <account-name> --sender $DEPLOYER
 /// --rpc-url $RPC_URL --broadcast --verify  --verifier=blockscout --verifier-url $VERIFIER_URL
 contract Deploy is Script {
-
     function run() public {
         address owner = vm.envAddress("OWNER");
         address licensingModule = vm.envAddress("LICENSING_MODULE");

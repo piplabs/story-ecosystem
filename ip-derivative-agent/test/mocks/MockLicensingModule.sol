@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import { MockRoyaltyModule } from "./MockRoyaltyModule.sol";
+
 contract MockLicensingModule {
     address public currencyToken;
-    uint256 public tokenAmount;
+    MockRoyaltyModule public royaltyModule;
+    uint256 public predictedFee;
+    uint256 public actualFee;
     bool public registerDerivativeCalled;
 
-    function setMintingFee(address _currencyToken, uint256 _tokenAmount) external {
+    constructor(address _royaltyModule) {
+        royaltyModule = MockRoyaltyModule(_royaltyModule);
+    }
+
+    function setMintingFee(address _currencyToken, uint256 _predictedFee, uint256 _actualFee) external {
         currencyToken = _currencyToken;
-        tokenAmount = _tokenAmount;
+        predictedFee = _predictedFee;
+        actualFee = _actualFee;
     }
 
     function predictMintingLicenseFee(
@@ -19,11 +28,11 @@ contract MockLicensingModule {
         address,
         bytes calldata
     ) external view returns (address, uint256) {
-        return (currencyToken, tokenAmount);
+        return (address(currencyToken), predictedFee);
     }
 
     function registerDerivative(
-        address,
+        address childIpId,
         address[] calldata,
         uint256[] calldata,
         address,
@@ -33,5 +42,8 @@ contract MockLicensingModule {
         uint32
     ) external {
         registerDerivativeCalled = true;
+        if (actualFee > 0) {
+            royaltyModule.payLicenseMintingFee(childIpId, msg.sender, address(currencyToken), actualFee);
+        }
     }
 }

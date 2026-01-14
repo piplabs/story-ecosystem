@@ -5,6 +5,7 @@ import { Test } from "forge-std/Test.sol";
 import { IPDerivativeAgent } from "../src/IPDerivativeAgent.sol";
 import { IIPDerivativeAgent } from "../src/IIPDerivativeAgent.sol";
 import { MockLicensingModule } from "../test/mocks/MockLicensingModule.sol";
+import { MockRoyaltyModule } from "../test/mocks/MockRoyaltyModule.sol";
 import { MockERC20 } from "../test/mocks/MockERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -12,10 +13,10 @@ import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 contract IPDerivativeAgentTest is Test {
     IPDerivativeAgent public agent;
     MockLicensingModule public licensingModule;
+    MockRoyaltyModule public royaltyModule;
     MockERC20 public token;
 
     address public owner = address(0x1);
-    address public royaltyModule = address(0x2);
     address public parentIp = address(0x3);
     address public childIp = address(0x4);
     address public licenseTemplate = address(0x5);
@@ -42,12 +43,13 @@ contract IPDerivativeAgentTest is Test {
 
     function setUp() public {
         // Deploy mocks
-        licensingModule = new MockLicensingModule();
+        royaltyModule = new MockRoyaltyModule();
+        licensingModule = new MockLicensingModule(address(royaltyModule));
         token = new MockERC20("Mock Token", "MTK");
 
         // Deploy agent
         vm.prank(owner);
-        agent = new IPDerivativeAgent(owner, address(licensingModule), royaltyModule);
+        agent = new IPDerivativeAgent(owner, address(licensingModule), address(royaltyModule));
 
         // Mint tokens to licensee
         token.mint(licensee, 1000 ether);
@@ -57,13 +59,13 @@ contract IPDerivativeAgentTest is Test {
 
     function test_Constructor_Success() public view {
         assertEq(address(agent.LICENSING_MODULE()), address(licensingModule));
-        assertEq(agent.ROYALTY_MODULE(), royaltyModule);
+        assertEq(agent.ROYALTY_MODULE(), address(royaltyModule));
         assertEq(agent.owner(), owner);
     }
 
     function test_Constructor_RevertIf_ZeroLicensingModule() public {
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_ZeroAddress.selector);
-        new IPDerivativeAgent(owner, address(0), royaltyModule);
+        new IPDerivativeAgent(owner, address(0), address(royaltyModule));
     }
 
     function test_Constructor_RevertIf_ZeroRoyaltyModule() public {
@@ -73,7 +75,7 @@ contract IPDerivativeAgentTest is Test {
 
     function test_Constructor_RevertIf_ZeroOwner() public {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new IPDerivativeAgent(address(0), address(licensingModule), royaltyModule);
+        new IPDerivativeAgent(address(0), address(licensingModule), address(royaltyModule));
     }
 
     // ========== Whitelist Management Tests ==========
@@ -342,7 +344,7 @@ contract IPDerivativeAgentTest is Test {
 
     function test_RegisterDerivative_Success_WithFee() public {
         uint256 fee = 10 ether;
-        licensingModule.setMintingFee(address(token), fee);
+        licensingModule.setMintingFee(address(token), fee, fee);
 
         // Whitelist the licensee
         vm.prank(owner);
@@ -370,8 +372,68 @@ contract IPDerivativeAgentTest is Test {
         assertEq(token.balanceOf(licensee), 1000 ether - fee);
     }
 
+    function test_RegisterDerivative_Success_PredictedFeeActualFeeMismatch() public {
+        // test when predictedFee < actualFee
+        uint256 predictedFee = 10 ether;
+        uint256 actualFee = 15 ether;
+        licensingModule.setMintingFee(address(token), predictedFee, actualFee);
+
+        // Whitelist the licensee
+        vm.prank(owner);
+        agent.addToWhitelist(sampleEntry);
+
+        // Approve agent to spend tokens
+        vm.prank(licensee);
+        token.approve(address(agent), actualFee);
+
+        // Register derivative
+        vm.prank(licensee);
+        vm.expectEmit(true, true, true, true);
+        emit IIPDerivativeAgent.DerivativeRegistered(
+            licensee,
+            childIp,
+            parentIp,
+            licenseTermsId,
+            licenseTemplate,
+            address(token),
+            predictedFee
+        );
+        agent.registerDerivativeViaAgent(childIp, parentIp, licenseTermsId, licenseTemplate, 0);
+
+        // Check that tokens were transferred
+        uint256 balanceAfterFirstRegistration = token.balanceOf(licensee);
+        assertEq(balanceAfterFirstRegistration, 1000 ether - actualFee);
+
+        // test when predictedFee > actualFee
+        predictedFee = 15 ether;
+        actualFee = 10 ether;
+        licensingModule.setMintingFee(address(token), predictedFee, actualFee);
+
+        // Approve agent to spend tokens
+        vm.prank(licensee);
+        token.approve(address(agent), actualFee);
+
+        // Register derivative
+        vm.prank(licensee);
+        vm.expectEmit(true, true, true, true);
+        emit IIPDerivativeAgent.DerivativeRegistered(
+            licensee,
+            childIp,
+            parentIp,
+            licenseTermsId,
+            licenseTemplate,
+            address(token),
+            predictedFee
+        );
+        agent.registerDerivativeViaAgent(childIp, parentIp, licenseTermsId, licenseTemplate, 0);
+
+        // Check that tokens were transferred
+        uint256 balanceAfterSecondRegistration = token.balanceOf(licensee);
+        assertEq(balanceAfterSecondRegistration, balanceAfterFirstRegistration - actualFee);
+    }
+
     function test_RegisterDerivative_Success_NoFee() public {
-        licensingModule.setMintingFee(address(0), 0);
+        licensingModule.setMintingFee(address(token), 0, 0);
 
         // Whitelist the licensee
         vm.prank(owner);
@@ -387,7 +449,7 @@ contract IPDerivativeAgentTest is Test {
 
     function test_RegisterDerivative_Success_WithGlobalEntry() public {
         uint256 fee = 5 ether;
-        licensingModule.setMintingFee(address(token), fee);
+        licensingModule.setMintingFee(address(token), fee, fee);
 
         // Whitelist with global entry
         vm.prank(owner);
@@ -423,7 +485,7 @@ contract IPDerivativeAgentTest is Test {
     function test_RegisterDerivative_RevertIf_FeeTooHigh() public {
         uint256 fee = 10 ether;
         uint256 maxFee = 5 ether;
-        licensingModule.setMintingFee(address(token), fee);
+        licensingModule.setMintingFee(address(token), fee, fee);
 
         vm.prank(owner);
         agent.addToWhitelist(sampleEntry);

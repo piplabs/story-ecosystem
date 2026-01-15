@@ -41,7 +41,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @param _licensingModule LicensingModule address (must be non-zero)
     /// @param _royaltyModule RoyaltyModule address (must be non-zero)
     constructor(address owner, address _licensingModule, address _royaltyModule) Ownable(owner) {
-        if (owner == address(0) || _licensingModule == address(0) || _royaltyModule == address(0)) {
+        if (_licensingModule == address(0) || _royaltyModule == address(0)) {
             revert IPDerivativeAgent_ZeroAddress();
         }
         LICENSING_MODULE = ILicensingModule(_licensingModule);
@@ -216,7 +216,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     ///      4. Pull fee tokens from licensee
     ///      5. Approve RoyaltyModule to spend fee tokens
     ///      6. Call LicensingModule.registerDerivative
-    ///      7. Clean up any remaining allowance
+    ///      7. Clean up any remaining allowance and send back any remaining tokens
     /// @param childIpId The derivative IP ID (must be non-zero)
     /// @param parentIpId The parent IP ID (must be non-zero)
     /// @param licenseTermsId The license terms ID in the license template (must be non-zero)
@@ -243,7 +243,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         bytes memory royaltyContext = "";
 
         // Predict minting fee for a single license token (amount = 1), receiver=msg.sender (licensee/derivative owner)
-        (address currencyToken, uint256 tokenAmount) = LICENSING_MODULE.predictMintingLicenseFee(
+        (address currencyTokenAddr, uint256 tokenAmount) = LICENSING_MODULE.predictMintingLicenseFee(
             parentIpId,
             licenseTemplate,
             licenseTermsId,
@@ -265,15 +265,16 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         uint32 maxRts = 0;
         uint32 maxRevenueShare = 0;
 
+        IERC20 currencyToken = IERC20(currencyTokenAddr);
         // Handle token payment if required
-        if (currencyToken != address(0) && tokenAmount > 0) {
-            IERC20 token = IERC20(currencyToken);
-
-            // Transfer tokens from licensee to this contract
-            token.safeTransferFrom(msg.sender, address(this), tokenAmount);
-
+        if (currencyTokenAddr != address(0) && tokenAmount > 0) {
+            if (maxMintingFee == 0) {
+                maxMintingFee = currencyToken.allowance(msg.sender, address(this));
+            }
+            // Transfer maxMintingFee tokens from licensee to this contract, in case actual fee > predicted fee
+            currencyToken.safeTransferFrom(msg.sender, address(this), maxMintingFee);
             // Increase allowance for RoyaltyModule to pull tokens during registerDerivative
-            token.safeIncreaseAllowance(ROYALTY_MODULE, tokenAmount);
+            currencyToken.safeIncreaseAllowance(ROYALTY_MODULE, maxMintingFee);
         }
 
         // Call LicensingModule to register derivative
@@ -289,12 +290,12 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             maxRevenueShare
         );
 
-        // Clean up any remaining allowance for RoyaltyModule
-        if (currencyToken != address(0) && tokenAmount > 0) {
-            IERC20 token = IERC20(currencyToken);
-            uint256 remainingAllowance = token.allowance(address(this), ROYALTY_MODULE);
+        // Clean up any remaining allowance for RoyaltyModule and send back any remaining tokens
+        if (currencyTokenAddr != address(0) && tokenAmount > 0) {
+            uint256 remainingAllowance = currencyToken.allowance(address(this), ROYALTY_MODULE);
             if (remainingAllowance > 0) {
-                token.forceApprove(ROYALTY_MODULE, 0);
+                currencyToken.forceApprove(ROYALTY_MODULE, 0);
+                currencyToken.safeTransfer(msg.sender, currencyToken.balanceOf(address(this)));
             }
         }
 
@@ -304,7 +305,7 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             parentIpId,
             licenseTermsId,
             licenseTemplate,
-            currencyToken,
+            currencyTokenAddr,
             tokenAmount
         );
     }

@@ -18,6 +18,28 @@ interface IIPDerivativeAgent {
         uint256 licenseTermsId;
     }
 
+    /// @notice Struct containing signature data for IPAccount executeWithSig
+    /// @param signer The signer address (IP Account owner)
+    /// @param deadline The deadline timestamp for the signature
+    /// @param signature The EIP-712 signature bytes (r, s, v concatenated)
+    struct SignatureData {
+        address signer;
+        uint256 deadline;
+        bytes signature;
+    }
+
+    /// @notice Struct containing ERC20 permit signature data
+    /// @param deadline The deadline timestamp for the permit
+    /// @param v The v component of the signature
+    /// @param r The r component of the signature
+    /// @param s The s component of the signature
+    struct PermitSignatureData {
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
+
     error IPDerivativeAgent_ZeroAddress();
     error IPDerivativeAgent_AlreadyWhitelisted(
         address parentIpId,

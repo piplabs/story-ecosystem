@@ -17,6 +17,7 @@ contract IPDerivativeAgentTest is Test {
     MockERC20 public token;
 
     address public owner = address(0x1);
+    address public accessController = address(0x7);
     address public parentIp = address(0x3);
     address public childIp = address(0x4);
     address public licenseTemplate = address(0x5);
@@ -49,7 +50,7 @@ contract IPDerivativeAgentTest is Test {
 
         // Deploy agent
         vm.prank(owner);
-        agent = new IPDerivativeAgent(owner, address(licensingModule), address(royaltyModule));
+        agent = new IPDerivativeAgent(owner, accessController, address(licensingModule), address(royaltyModule));
 
         // Mint tokens to licensee
         token.mint(licensee, 1000 ether);
@@ -65,17 +66,17 @@ contract IPDerivativeAgentTest is Test {
 
     function test_Constructor_RevertIf_ZeroLicensingModule() public {
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_ZeroAddress.selector);
-        new IPDerivativeAgent(owner, address(0), address(royaltyModule));
+        new IPDerivativeAgent(owner, accessController, address(0), address(royaltyModule));
     }
 
     function test_Constructor_RevertIf_ZeroRoyaltyModule() public {
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_ZeroAddress.selector);
-        new IPDerivativeAgent(owner, address(licensingModule), address(0));
+        new IPDerivativeAgent(owner, accessController, address(licensingModule), address(0));
     }
 
     function test_Constructor_RevertIf_ZeroOwner() public {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new IPDerivativeAgent(address(0), address(licensingModule), address(royaltyModule));
+        new IPDerivativeAgent(address(0), accessController, address(licensingModule), address(royaltyModule));
     }
 
     // ========== Whitelist Management Tests ==========

@@ -6,8 +6,11 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import { IAccessController } from "@storyprotocol/core/interfaces/access/IAccessController.sol";
 import { ILicensingModule } from "@storyprotocol/core/interfaces/modules/licensing/ILicensingModule.sol";
-
+import { IIPAccount } from "@storyprotocol/core/interfaces/IIPAccount.sol";
+import { AccessPermission } from "@storyprotocol/core/lib/AccessPermission.sol";
 import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
 
 /// @title IPDerivativeAgent
@@ -30,6 +33,9 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @notice Licensing module to call for derivative registration
     ILicensingModule public immutable LICENSING_MODULE;
 
+    /// @notice Access controller module to call for transient permissions
+    IAccessController public immutable ACCESS_CONTROLLER;
+
     /// @notice Royalty module address (used for token allowance during fee payment)
     address public immutable ROYALTY_MODULE;
 
@@ -38,12 +44,24 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     mapping(bytes32 => bool) private _whitelist;
 
     /// @param owner Address to transfer ownership to (must be non-zero)
+    /// @param _accessController AccessController address (must be non-zero)
     /// @param _licensingModule LicensingModule address (must be non-zero)
     /// @param _royaltyModule RoyaltyModule address (must be non-zero)
-    constructor(address owner, address _licensingModule, address _royaltyModule) Ownable(owner) {
-        if (_licensingModule == address(0) || _royaltyModule == address(0)) {
+    constructor(
+        address owner,
+        address _accessController,
+        address _licensingModule,
+        address _royaltyModule
+    ) Ownable(owner) {
+        if (
+            owner == address(0) ||
+            _accessController == address(0) ||
+            _licensingModule == address(0) ||
+            _royaltyModule == address(0)
+        ) {
             revert IPDerivativeAgent_ZeroAddress();
         }
+        ACCESS_CONTROLLER = IAccessController(_accessController);
         LICENSING_MODULE = ILicensingModule(_licensingModule);
         ROYALTY_MODULE = _royaltyModule;
     }
@@ -229,85 +247,103 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         address licenseTemplate,
         uint256 maxMintingFee
     ) external nonReentrant whenNotPaused {
-        if (
-            childIpId == address(0) || parentIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0
-        ) {
-            revert IPDerivativeAgent_InvalidParams();
-        }
-
-        // Check whitelist (exact match or global entry)
-        if (!isLicenseeWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender)) {
-            revert IPDerivativeAgent_NotWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender);
-        }
-
-        bytes memory royaltyContext = "";
-
-        // Predict minting fee for a single license token (amount = 1), receiver=msg.sender (licensee/derivative owner)
-        (address currencyTokenAddr, uint256 tokenAmount) = LICENSING_MODULE.predictMintingLicenseFee(
+        (address currencyToken, uint256 tokenAmount) = LICENSING_MODULE.predictMintingLicenseFee(
             parentIpId,
             licenseTemplate,
             licenseTermsId,
             1,
             msg.sender,
-            royaltyContext
+            ""
         );
+        _registerDerivativeViaAgent({
+            childIpId: childIpId,
+            parentIpId: parentIpId,
+            licenseTermsId: licenseTermsId,
+            licenseTemplate: licenseTemplate,
+            maxMintingFee: maxMintingFee,
+            currencyTokenAddr: currencyToken,
+            tokenAmount: tokenAmount
+        });
+    }
 
-        // Validate fee against maxMintingFee if caller specified a non-zero maximum
-        if (maxMintingFee != 0 && tokenAmount > maxMintingFee) {
-            revert IPDerivativeAgent_FeeTooHigh(tokenAmount, maxMintingFee);
+    /// @notice Register a derivative with IPAccount signature and ERC20 permit
+    /// @dev This function is a wrapper that:
+    ///      1. Sets transient permission via IPAccount's executeWithSig
+    ///      2. Uses ERC20 permit for token approval
+    ///      3. Delegates to the _registerDerivativeViaAgent private function
+    /// @param childIpId The derivative IP ID (must be non-zero)
+    /// @param parentIpId The parent IP ID (must be non-zero)
+    /// @param licenseTermsId The license terms ID in the license template (must be non-zero)
+    /// @param licenseTemplate The license template address (must be non-zero)
+    /// @param maxMintingFee Maximum minting fee willing to pay. Use 0 for no limit.
+    /// @param ipAccountSigData Signature data for IPAccount executeWithSig
+    /// @param permitSigData Permit signature data for ERC20 token approval (can be empty struct if no fee)
+    function registerDerivativeViaAgentWithPermissions(
+        address childIpId,
+        address parentIpId,
+        uint256 licenseTermsId,
+        address licenseTemplate,
+        uint256 maxMintingFee,
+        SignatureData calldata ipAccountSigData,
+        PermitSignatureData calldata permitSigData
+    ) external nonReentrant whenNotPaused {
+        // Set transient permission via IPAccount's executeWithSig (skip if no signature provided)
+        if (ipAccountSigData.signature.length > 0) {
+            IIPAccount(payable(childIpId)).executeWithSig(
+                address(ACCESS_CONTROLLER),
+                0,
+                abi.encodeWithSelector(
+                    IAccessController.setTransientPermission.selector,
+                    childIpId,
+                    address(this),
+                    address(LICENSING_MODULE),
+                    ILicensingModule.registerDerivative.selector,
+                    AccessPermission.ALLOW
+                ),
+                ipAccountSigData.signer,
+                ipAccountSigData.deadline,
+                ipAccountSigData.signature
+            );
         }
 
-        // Prepare arrays for LicensingModule call (single parent)
-        address[] memory parents = new address[](1);
-        parents[0] = parentIpId;
-        uint256[] memory licenseTermsIds = new uint256[](1);
-        licenseTermsIds[0] = licenseTermsId;
-        uint32 maxRts = 0;
-        uint32 maxRevenueShare = 0;
-
-        IERC20 currencyToken = IERC20(currencyTokenAddr);
-        // Handle token payment if required
-        if (currencyTokenAddr != address(0) && tokenAmount > 0) {
-            if (maxMintingFee == 0) {
-                maxMintingFee = currencyToken.allowance(msg.sender, address(this));
-            }
-            // Transfer maxMintingFee tokens from licensee to this contract, in case actual fee > predicted fee
-            currencyToken.safeTransferFrom(msg.sender, address(this), maxMintingFee);
-            // Increase allowance for RoyaltyModule to pull tokens during registerDerivative
-            currencyToken.safeIncreaseAllowance(ROYALTY_MODULE, maxMintingFee);
-        }
-
-        // Call LicensingModule to register derivative
-        // The RoyaltyModule will pull the minting fee tokens from this contract during this call
-        LICENSING_MODULE.registerDerivative(
-            childIpId,
-            parents,
-            licenseTermsIds,
-            licenseTemplate,
-            royaltyContext,
-            maxMintingFee,
-            maxRts,
-            maxRevenueShare
-        );
-
-        // Clean up any remaining allowance for RoyaltyModule and send back any remaining tokens
-        if (currencyTokenAddr != address(0) && tokenAmount > 0) {
-            uint256 remainingAllowance = currencyToken.allowance(address(this), ROYALTY_MODULE);
-            if (remainingAllowance > 0) {
-                currencyToken.forceApprove(ROYALTY_MODULE, 0);
-                currencyToken.safeTransfer(msg.sender, currencyToken.balanceOf(address(this)));
-            }
-        }
-
-        emit DerivativeRegistered(
-            msg.sender,
-            childIpId,
+        // Handle ERC20 permit if there's a minting fee (skip if no signature provided)
+        (address currencyToken, uint256 tokenAmount) = LICENSING_MODULE.predictMintingLicenseFee(
             parentIpId,
-            licenseTermsId,
             licenseTemplate,
-            currencyTokenAddr,
-            tokenAmount
+            licenseTermsId,
+            1,
+            msg.sender,
+            ""
         );
+
+        // default to licensee balance if no max minting fee specified
+        if (maxMintingFee == 0) maxMintingFee = IERC20(currencyToken).balanceOf(msg.sender);
+
+        if (permitSigData.deadline > 0 && currencyToken != address(0) && tokenAmount > 0) {
+            // Only call permit if there's a fee to pay
+            // Permit signature should allow agent to spend maxMintingFee tokens
+            try
+                IERC20Permit(currencyToken).permit(
+                    msg.sender,
+                    address(this),
+                    maxMintingFee,
+                    permitSigData.deadline,
+                    permitSigData.v,
+                    permitSigData.r,
+                    permitSigData.s
+                )
+            {} catch {}
+        }
+
+        _registerDerivativeViaAgent({
+            childIpId: childIpId,
+            parentIpId: parentIpId,
+            licenseTermsId: licenseTermsId,
+            licenseTemplate: licenseTemplate,
+            maxMintingFee: maxMintingFee,
+            currencyTokenAddr: currencyToken,
+            tokenAmount: tokenAmount
+        });
     }
 
     /// -----------------------------------------------------------------------
@@ -414,5 +450,84 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         address licensee
     ) internal pure returns (bytes32 whitelistKey) {
         return keccak256(abi.encodePacked(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee));
+    }
+
+    /// @dev internal helper to register a derivative via IPDerivativeAgent
+    function _registerDerivativeViaAgent(
+        address childIpId,
+        address parentIpId,
+        uint256 licenseTermsId,
+        address licenseTemplate,
+        uint256 maxMintingFee,
+        address currencyTokenAddr,
+        uint256 tokenAmount
+    ) private {
+        if (
+            childIpId == address(0) || parentIpId == address(0) || licenseTemplate == address(0) || licenseTermsId == 0
+        ) {
+            revert IPDerivativeAgent_InvalidParams();
+        }
+
+        // Check whitelist (exact match or global entry)
+        if (!isLicenseeWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender)) {
+            revert IPDerivativeAgent_NotWhitelisted(parentIpId, childIpId, licenseTemplate, licenseTermsId, msg.sender);
+        }
+
+        // Validate fee against maxMintingFee if caller specified a non-zero maximum
+        if (maxMintingFee != 0 && tokenAmount > maxMintingFee) {
+            revert IPDerivativeAgent_FeeTooHigh(tokenAmount, maxMintingFee);
+        }
+
+        // Prepare arrays for LicensingModule call (single parent)
+        address[] memory parents = new address[](1);
+        parents[0] = parentIpId;
+        uint256[] memory licenseTermsIds = new uint256[](1);
+        licenseTermsIds[0] = licenseTermsId;
+        uint32 maxRts = 0;
+        uint32 maxRevenueShare = 0;
+
+        IERC20 currencyToken = IERC20(currencyTokenAddr);
+        // Handle token payment if required
+        if (currencyTokenAddr != address(0) && tokenAmount > 0) {
+            if (maxMintingFee == 0) {
+                maxMintingFee = currencyToken.allowance(msg.sender, address(this));
+            }
+            // Transfer maxMintingFee tokens from licensee to this contract, in case actual fee > predicted fee
+            currencyToken.safeTransferFrom(msg.sender, address(this), maxMintingFee);
+            // Increase allowance for RoyaltyModule to pull tokens during registerDerivative
+            currencyToken.safeIncreaseAllowance(ROYALTY_MODULE, maxMintingFee);
+        }
+
+        bytes memory royaltyContext = "";
+        // Call LicensingModule to register derivative
+        // The RoyaltyModule will pull the minting fee tokens from this contract during this call
+        LICENSING_MODULE.registerDerivative(
+            childIpId,
+            parents,
+            licenseTermsIds,
+            licenseTemplate,
+            royaltyContext,
+            maxMintingFee,
+            maxRts,
+            maxRevenueShare
+        );
+
+        // Clean up any remaining allowance for RoyaltyModule and send back any remaining tokens
+        if (currencyTokenAddr != address(0) && tokenAmount > 0) {
+            uint256 remainingAllowance = currencyToken.allowance(address(this), ROYALTY_MODULE);
+            if (remainingAllowance > 0) {
+                currencyToken.forceApprove(ROYALTY_MODULE, 0);
+                currencyToken.safeTransfer(msg.sender, currencyToken.balanceOf(address(this)));
+            }
+        }
+        emit DerivativeRegistered(
+            msg.sender,
+            childIpId,
+            parentIpId,
+            licenseTermsId,
+            licenseTemplate,
+            currencyTokenAddr,
+            tokenAmount
+        );
     }
 }

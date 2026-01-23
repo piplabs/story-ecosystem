@@ -15,11 +15,12 @@ contract Deploy is Script {
         address owner = vm.envAddress("OWNER");
         address licensingModule = vm.envAddress("LICENSING_MODULE");
         address royaltyModule = vm.envAddress("ROYALTY_MODULE");
+        address accessController = vm.envAddress("ACCESS_CONTROLLER");
 
         vm.startBroadcast();
 
         console2.log("Deploying IPDerivativeAgent...");
-        IPDerivativeAgent agent = new IPDerivativeAgent(owner, licensingModule, royaltyModule);
+        IPDerivativeAgent agent = new IPDerivativeAgent(owner, accessController, licensingModule, royaltyModule);
         console2.log("IPDerivativeAgent deployed to:", address(agent));
 
         vm.stopBroadcast();

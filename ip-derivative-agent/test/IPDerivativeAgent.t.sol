@@ -4,9 +4,9 @@ pragma solidity 0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { IPDerivativeAgent } from "../src/IPDerivativeAgent.sol";
 import { IIPDerivativeAgent } from "../src/IIPDerivativeAgent.sol";
-import { MockLicensingModule } from "../test/mocks/MockLicensingModule.sol";
-import { MockRoyaltyModule } from "../test/mocks/MockRoyaltyModule.sol";
-import { MockERC20 } from "../test/mocks/MockERC20.sol";
+import { MockLicensingModule } from "./mocks/MockLicensingModule.sol";
+import { MockRoyaltyModule } from "./mocks/MockRoyaltyModule.sol";
+import { MockERC20 } from "./mocks/MockERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 
@@ -18,14 +18,21 @@ contract IPDerivativeAgentTest is Test {
 
     address public owner = address(0x1);
     address public accessController = address(0x7);
-    address public parentIp = address(0x3);
-    address public childIp = address(0x4);
+    address public parentIp = address(0x2);
+    address public childIp = address(0x3);
     address public licenseTemplate = address(0x5);
-    address public licensee = address(0x6);
+    address public licensee;
+    uint256 public licenseePrivateKey;
     uint256 public licenseTermsId = 1;
 
-    IIPDerivativeAgent.WhitelistEntry public sampleEntry =
-        IIPDerivativeAgent.WhitelistEntry({
+    IIPDerivativeAgent.WhitelistEntry public sampleEntry;
+
+    IIPDerivativeAgent.WhitelistEntry public globalEntry;
+
+    function setUp() public {
+        (licensee, licenseePrivateKey) = makeAddrAndKey("licensee");
+
+        sampleEntry = IIPDerivativeAgent.WhitelistEntry({
             parentIpId: parentIp,
             childIpId: childIp,
             licensee: licensee,
@@ -33,8 +40,7 @@ contract IPDerivativeAgentTest is Test {
             licenseTermsId: licenseTermsId
         });
 
-    IIPDerivativeAgent.WhitelistEntry public globalEntry =
-        IIPDerivativeAgent.WhitelistEntry({
+        globalEntry = IIPDerivativeAgent.WhitelistEntry({
             parentIpId: parentIp,
             childIpId: childIp,
             licensee: address(0),
@@ -42,7 +48,6 @@ contract IPDerivativeAgentTest is Test {
             licenseTermsId: licenseTermsId
         });
 
-    function setUp() public {
         // Deploy mocks
         royaltyModule = new MockRoyaltyModule();
         licensingModule = new MockLicensingModule(address(royaltyModule));
@@ -545,6 +550,149 @@ contract IPDerivativeAgentTest is Test {
         vm.prank(licensee);
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_InvalidParams.selector);
         agent.registerDerivativeViaAgent(childIp, parentIp, licenseTermsId, address(0), 0);
+    }
+
+    function test_RegisterDerivativeWithPermissions_Success_WithFee_maxMintingFeeUndefined() public {
+        uint256 fee = 10 ether;
+        licensingModule.setMintingFee(address(token), fee, fee);
+
+        // Whitelist the licensee
+        vm.prank(owner);
+        agent.addToWhitelist(sampleEntry);
+
+        uint256 deadline = block.timestamp + 10;
+
+        // IP account signature (unused in this test)
+        IIPDerivativeAgent.SignatureData memory ipAccountSigData = IIPDerivativeAgent.SignatureData({
+            signer: licensee,
+            deadline: deadline,
+            signature: ""
+        });
+
+        // permit signature
+        bytes32 message = keccak256(
+            abi.encodePacked(
+                hex"1901",
+                token.DOMAIN_SEPARATOR(),
+                keccak256(
+                    abi.encode(
+                        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                        licensee,
+                        address(agent),
+                        token.balanceOf(licensee),
+                        token.nonces(licensee),
+                        deadline
+                    )
+                )
+            )
+        );
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(licenseePrivateKey, message);
+        IIPDerivativeAgent.PermitSignatureData memory permitSigData = IIPDerivativeAgent.PermitSignatureData(
+            deadline,
+            v,
+            r,
+            s
+        );
+
+        // Register derivative
+        vm.prank(licensee);
+        vm.expectEmit(true, true, true, true);
+        emit IIPDerivativeAgent.DerivativeRegistered(
+            licensee,
+            childIp,
+            parentIp,
+            licenseTermsId,
+            licenseTemplate,
+            address(token),
+            fee
+        );
+
+        // unlimited max minting fee
+        uint256 maxMintingFee = 0;
+        agent.registerDerivativeViaAgentWithPermissions(
+            childIp,
+            parentIp,
+            licenseTermsId,
+            licenseTemplate,
+            maxMintingFee,
+            ipAccountSigData,
+            permitSigData
+        );
+
+        // Check that tokens were transferred
+        assertEq(token.balanceOf(licensee), 1000 ether - fee);
+    }
+
+    function test_RegisterDerivativeWithPermissions_Success_WithFee_maxMintingFeeDefined() public {
+        uint256 fee = 10 ether;
+        licensingModule.setMintingFee(address(token), fee, fee);
+
+        // Whitelist the licensee
+        vm.prank(owner);
+        agent.addToWhitelist(sampleEntry);
+
+        uint256 deadline = block.timestamp + 10;
+
+        // IP account signature (unused in this test)
+        IIPDerivativeAgent.SignatureData memory ipAccountSigData = IIPDerivativeAgent.SignatureData({
+            signer: licensee,
+            deadline: deadline,
+            signature: ""
+        });
+
+        // permit signature
+        uint256 maxMintingFee = 15 ether;
+        bytes32 message = keccak256(
+            abi.encodePacked(
+                hex"1901",
+                token.DOMAIN_SEPARATOR(),
+                keccak256(
+                    abi.encode(
+                        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                        licensee,
+                        address(agent),
+                        maxMintingFee,
+                        token.nonces(licensee),
+                        deadline
+                    )
+                )
+            )
+        );
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(licenseePrivateKey, message);
+        IIPDerivativeAgent.PermitSignatureData memory permitSigData = IIPDerivativeAgent.PermitSignatureData(
+            deadline,
+            v,
+            r,
+            s
+        );
+
+        // Register derivative
+        vm.prank(licensee);
+        vm.expectEmit(true, true, true, true);
+        emit IIPDerivativeAgent.DerivativeRegistered(
+            licensee,
+            childIp,
+            parentIp,
+            licenseTermsId,
+            licenseTemplate,
+            address(token),
+            fee
+        );
+
+        agent.registerDerivativeViaAgentWithPermissions(
+            childIp,
+            parentIp,
+            licenseTermsId,
+            licenseTemplate,
+            maxMintingFee,
+            ipAccountSigData,
+            permitSigData
+        );
+
+        // Check that tokens were transferred
+        assertEq(token.balanceOf(licensee), 1000 ether - fee);
     }
 
     // ========== Pausable Tests ==========

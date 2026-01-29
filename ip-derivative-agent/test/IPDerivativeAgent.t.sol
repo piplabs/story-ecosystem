@@ -9,6 +9,9 @@ import { MockRoyaltyModule } from "../test/mocks/MockRoyaltyModule.sol";
 import { MockERC20 } from "../test/mocks/MockERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+import { IPDerivativeAgent } from "../src/IPDerivativeAgent.sol";
 
 contract IPDerivativeAgentTest is Test {
     IPDerivativeAgent public agent;
@@ -48,8 +51,9 @@ contract IPDerivativeAgentTest is Test {
         token = new MockERC20("Mock Token", "MTK");
 
         // Deploy agent
-        vm.prank(owner);
-        agent = new IPDerivativeAgent(owner, address(licensingModule), address(royaltyModule));
+        address impl = address(new IPDerivativeAgent(address(licensingModule), address(royaltyModule)));
+        bytes memory data = abi.encodeCall(IPDerivativeAgent.initialize, (owner));
+        agent = IPDerivativeAgent(address(new ERC1967Proxy(impl, data)));
 
         // Mint tokens to licensee
         token.mint(licensee, 1000 ether);
@@ -65,17 +69,21 @@ contract IPDerivativeAgentTest is Test {
 
     function test_Constructor_RevertIf_ZeroLicensingModule() public {
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_ZeroAddress.selector);
-        new IPDerivativeAgent(owner, address(0), address(royaltyModule));
+        new IPDerivativeAgent(address(0), address(royaltyModule));
     }
 
     function test_Constructor_RevertIf_ZeroRoyaltyModule() public {
         vm.expectRevert(IIPDerivativeAgent.IPDerivativeAgent_ZeroAddress.selector);
-        new IPDerivativeAgent(owner, address(licensingModule), address(0));
+        new IPDerivativeAgent(address(licensingModule), address(0));
     }
 
-    function test_Constructor_RevertIf_ZeroOwner() public {
+    // ========== Initialization Tests ==========
+    function test_Initialize_revert_ZeroOwner() public {
+        address impl = address(new IPDerivativeAgent(address(licensingModule), address(royaltyModule)));
+        bytes memory data = abi.encodeCall(IPDerivativeAgent.initialize, (address(0)));
+
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new IPDerivativeAgent(address(0), address(licensingModule), address(royaltyModule));
+        new ERC1967Proxy(impl, data);
     }
 
     // ========== Whitelist Management Tests ==========
@@ -643,5 +651,32 @@ contract IPDerivativeAgentTest is Test {
 
         bytes32 key = agent.getWhitelistKey(parentIp, childIp, licenseTemplate, licenseTermsId, licensee);
         assertTrue(agent.isKeyWhitelisted(key));
+    }
+
+    // ========== UUPS Upgrade Tests ==========
+
+    function test_UUPSUpgrade_StatePreservedAfterUpgrade() public {
+        vm.prank(owner);
+        agent.addToWhitelist(sampleEntry);
+
+        assertTrue(agent.isLicenseeWhitelisted(parentIp, childIp, licenseTemplate, licenseTermsId, licensee));
+        assertEq(agent.owner(), owner);
+
+        address newImpl = address(new IPDerivativeAgent(address(licensingModule), address(royaltyModule)));
+        vm.prank(owner);
+        agent.upgradeToAndCall(newImpl, "");
+
+        assertTrue(agent.isLicenseeWhitelisted(parentIp, childIp, licenseTemplate, licenseTermsId, licensee));
+        assertEq(agent.owner(), owner);
+        assertEq(address(agent.LICENSING_MODULE()), address(licensingModule));
+        assertEq(agent.ROYALTY_MODULE(), address(royaltyModule));
+    }
+
+    function test_UUPSUpgrade_revert_NotOwner() public {
+        address newImpl = address(new IPDerivativeAgent(address(licensingModule), address(royaltyModule)));
+
+        vm.prank(address(0x999));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0x999)));
+        agent.upgradeToAndCall(newImpl, "");
     }
 }

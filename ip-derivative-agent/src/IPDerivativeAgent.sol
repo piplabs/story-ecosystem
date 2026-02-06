@@ -69,7 +69,7 @@ contract IPDerivativeAgent is
 
     /// @notice initializer for this implementation contract
     /// @param _owner The address of the owner (must be non-zero)
-    function initialize(address _owner) public initializer {
+    function initialize(address _owner) external initializer {
         __Ownable_init(_owner);
         __Pausable_init();
         __ReentrancyGuard_init();

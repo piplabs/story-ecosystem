@@ -5,16 +5,14 @@ import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { Upgrades, Options } from "@openzeppelin/foundry-upgrades/Upgrades.sol";
 
-import { IPDerivativeAgent } from "../src/IPDerivativeAgent.sol";
-
-/// @title Deploy
-/// @notice Deployment script for IPDerivativeAgent contract
+/// @title Upgrade
+/// @notice Upgrade script for IPDerivativeAgent contract
 /// @dev To use, run the following command:
-/// forge script script/Deploy.s.sol:Deploy --sig "run()" --account <account-name>
+/// forge script script/Upgrade.s.sol:Upgrade --sig "run()" --account <account-name>
 /// --rpc-url $RPC_URL --broadcast --verify  --verifier=blockscout --verifier-url $VERIFIER_URL
-contract Deploy is Script {
+contract Upgrade is Script {
     function run() public {
-        address owner = vm.envAddress("OWNER");
+        address agent = vm.envAddress("AGENT");
         address licensingModule = vm.envAddress("LICENSING_MODULE");
         address royaltyModule = vm.envAddress("ROYALTY_MODULE");
         Options memory options;
@@ -22,13 +20,9 @@ contract Deploy is Script {
 
         vm.startBroadcast();
 
-        console2.log("Deploying IPDerivativeAgent...");
-        address agent = Upgrades.deployUUPSProxy(
-            "IPDerivativeAgent.sol",
-            abi.encodeCall(IPDerivativeAgent.initialize, (owner)),
-            options
-        );
-        console2.log("IPDerivativeAgent deployed to:", agent);
+        console2.log("Upgrading IPDerivativeAgent...");
+        Upgrades.upgradeProxy(agent, "IPDerivativeAgent.sol", "", options);
+        console2.log("IPDerivativeAgent upgraded");
 
         vm.stopBroadcast();
     }

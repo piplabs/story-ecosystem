@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import { Ownable, Ownable2Step } from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ILicensingModule } from "@storyprotocol/core/interfaces/modules/licensing/ILicensingModule.sol";
@@ -22,30 +23,57 @@ import { IIPDerivativeAgent } from "./IIPDerivativeAgent.sol";
 /// registerDerivativeViaAgent.
 /// @dev Global entry Pattern: Setting licensee = address(0) in whitelist allows ANY caller to register that
 /// specific (parent, child, template, license) combo.
-contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, ReentrancyGuard {
+contract IPDerivativeAgent is
+    IIPDerivativeAgent,
+    Ownable2StepUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
+
+    /// @dev Storage structure for the IPDerivativeAgent
+    /// @custom:storage-location erc7201:ip-derivative-agent.IPDerivativeAgent
+    /// @param whitelist Whitelist mapping keyed by
+    /// keccak256(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee)
+    /// Use address(0) as licensee for global entry (allows any caller). licenseTermsId must be non-zero.
+    struct IPDerivativeAgentStorage {
+        mapping(bytes32 => bool) whitelist;
+    }
 
     uint256 public constant MAX_ENTRIES = 1000;
 
     /// @notice Licensing module to call for derivative registration
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     ILicensingModule public immutable LICENSING_MODULE;
 
     /// @notice Royalty module address (used for token allowance during fee payment)
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable ROYALTY_MODULE;
 
-    /// @notice Whitelist mapping keyed by keccak256(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee)
-    /// @dev Use address(0) as licensee for global entry (allows any caller). licenseTermsId must be non-zero.
-    mapping(bytes32 => bool) private _whitelist;
+    // keccak256(abi.encode(uint256(keccak256("ip-derivative-agent.IPDerivativeAgent")) - 1)) & ~bytes32(uint256(0xff));
+    bytes32 private constant IPDerivativeAgentStorageLocation =
+        0xf5f793628350fe9c49f538317d4d803965d72ef76f6b858bdb07cb297e184e00;
 
-    /// @param owner Address to transfer ownership to (must be non-zero)
     /// @param _licensingModule LicensingModule address (must be non-zero)
     /// @param _royaltyModule RoyaltyModule address (must be non-zero)
-    constructor(address owner, address _licensingModule, address _royaltyModule) Ownable(owner) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor(address _licensingModule, address _royaltyModule) {
         if (_licensingModule == address(0) || _royaltyModule == address(0)) {
             revert IPDerivativeAgent_ZeroAddress();
         }
         LICENSING_MODULE = ILicensingModule(_licensingModule);
         ROYALTY_MODULE = _royaltyModule;
+        _disableInitializers();
+    }
+
+    /// @notice initializer for this implementation contract
+    /// @param _owner The address of the owner (must be non-zero)
+    function initialize(address _owner) external initializer {
+        __Ownable_init(_owner);
+        __Pausable_init();
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
     }
 
     /// -----------------------------------------------------------------------
@@ -171,11 +199,12 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
         uint256 licenseTermsId,
         address licensee
     ) public view returns (bool isWhitelisted) {
+        IPDerivativeAgentStorage storage $ = _getIPDerivativeAgentStorage();
         bytes32 globalKey = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, address(0));
-        if (_whitelist[globalKey]) return true;
+        if ($.whitelist[globalKey]) return true;
 
         bytes32 exactKey = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
-        return _whitelist[exactKey];
+        return $.whitelist[exactKey];
     }
 
     /// @notice View function computing a whitelist key
@@ -199,7 +228,8 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     /// @param key The whitelist key
     /// @return keyWhitelisted True if the key is whitelisted, else False
     function isKeyWhitelisted(bytes32 key) external view returns (bool keyWhitelisted) {
-        return _whitelist[key];
+        IPDerivativeAgentStorage storage $ = _getIPDerivativeAgentStorage();
+        return $.whitelist[key];
     }
 
     /// -----------------------------------------------------------------------
@@ -364,9 +394,10 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             revert IPDerivativeAgent_InvalidParams();
         }
 
+        IPDerivativeAgentStorage storage $ = _getIPDerivativeAgentStorage();
         bytes32 key = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
-        if (_whitelist[key]) return;
-        _whitelist[key] = true;
+        if ($.whitelist[key]) return;
+        $.whitelist[key] = true;
 
         emit WhitelistedAdded(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
     }
@@ -390,11 +421,12 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
             revert IPDerivativeAgent_InvalidParams();
         }
 
+        IPDerivativeAgentStorage storage $ = _getIPDerivativeAgentStorage();
         bytes32 key = _whitelistKey(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
-        if (!_whitelist[key]) {
+        if (!$.whitelist[key]) {
             return;
         }
-        _whitelist[key] = false;
+        $.whitelist[key] = false;
 
         emit WhitelistedRemoved(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee);
     }
@@ -415,4 +447,14 @@ contract IPDerivativeAgent is IIPDerivativeAgent, Ownable2Step, Pausable, Reentr
     ) internal pure returns (bytes32 whitelistKey) {
         return keccak256(abi.encodePacked(parentIpId, childIpId, licenseTemplate, licenseTermsId, licensee));
     }
+
+    /// @dev Returns the storage struct of IPDerivativeAgent.
+    function _getIPDerivativeAgentStorage() private pure returns (IPDerivativeAgentStorage storage $) {
+        assembly {
+            $.slot := IPDerivativeAgentStorageLocation
+        }
+    }
+
+    /// @dev Authorize upgrade
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }
